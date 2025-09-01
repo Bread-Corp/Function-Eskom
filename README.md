@@ -16,7 +16,7 @@ The `lambda_handler` is the main entry point for the service. It executes the fo
 ## 3. Data Model (`models.py`)
 The service uses a set of Python classes to define the structure of the tender data. This ensures consistency and makes the data easy to work with.
 
-`TenderBase` **(Abstract Class)**
+`TenderBase` **(Abstract Class)**   
 This is a foundational class that defines the common attributes for any tender, regardless of its source. It cannot be used directly but serves as a template for more specific tender classes.
 - Core Attributes:
     - `title`: The title of the tender.
@@ -27,7 +27,7 @@ This is a foundational class that defines the common attributes for any tender, 
     - `supporting_docs`: A list of `SupportingDoc` objects.
     - `tags`: A list of keywords or categories.
 
-`EskomTender` **(Concrete Class)**
+`EskomTender` **(Concrete Class)**  
 This class inherits from `TenderBase` and adds fields that are specific to the data provided by the Eskom API.
 - **Inherited Attributes**: All attributes from `TenderBase`.
 - **Eskom-Specific Attributes**:

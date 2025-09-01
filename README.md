@@ -31,8 +31,7 @@ This is a foundational class that defines the common attributes for any tender, 
 This class inherits from `TenderBase` and adds fields that are specific to the data provided by the Eskom API.
 - **Inherited Attributes**: All attributes from `TenderBase`.
 - **Eskom-Specific Attributes**:
-    - `tender_number`: The unique ID from Eskom.
-    - `reference`: An alternative reference number.
+    - `tender_number`: The unique ID from Eskom (populated from the REFERENCE field in the API).
     - `audience`: The intended audience for the tender.
     - `office_location`: The physical office location.
     - `email`: Contact email address.

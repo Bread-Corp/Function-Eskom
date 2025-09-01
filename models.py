@@ -146,7 +146,6 @@ class EskomTender(TenderBase):
         title: str, description: str, source: str, published_date: datetime, closing_date: datetime, supporting_docs: list, tags: list,
         # --- Child fields specific to EskomTender ---
         tender_number: str,
-        reference: str,
         audience: str,
         office_location: str,
         email: str,
@@ -159,7 +158,6 @@ class EskomTender(TenderBase):
         Args:
             (Inherited): title, description, source, published_date, closing_date, supporting_docs, tags.
             tender_number (str): The unique identifier for the tender (e.g., 'MWP1234PS').
-            reference (str): An alternative reference number for the tender.
             audience (str): The target audience for the tender.
             office_location (str): The Eskom office managing the tender.
             email (str): The contact email for tender inquiries.
@@ -170,7 +168,6 @@ class EskomTender(TenderBase):
         super().__init__(title, description, source, published_date, closing_date, supporting_docs, tags)
         # --- Eskom-specific Instance Attributes ---
         self.tender_number = tender_number
-        self.reference = reference
         self.audience = audience
         self.office_location = office_location
         self.email = email
@@ -219,21 +216,21 @@ class EskomTender(TenderBase):
         # .get() is used to safely access dictionary keys that might be missing.
         # .replace() and .strip() are used to clean string data by removing newline
         # characters and leading/trailing whitespace.
+        # String methods like .title(), .upper(), and .lower() are used to standardize the text format.
         return cls(
-            title=response_item.get('HEADER_DESC', '').replace('\n', ' ').replace('\r', '').strip(),
-            description=response_item.get('SCOPE_DETAILS', '').replace('\n', ' ').replace('\r', '').strip(),
+            title=response_item.get('HEADER_DESC', '').replace('\n', ' ').replace('\r', '').strip().title(),
+            description=response_item.get('SCOPE_DETAILS', '').replace('\n', ' ').replace('\r', '').strip().title(),
             source="Eskom",  # Hardcoded source for this class.
             published_date=pub_date,
             closing_date=close_date,
             supporting_docs=doc_list,
             tags=[],  # Initialize tags as an empty list, ready for the AI service.
-            tender_number=tender_id,
-            reference=response_item.get('REFERENCE', '').replace('\n', ' ').replace('\r', '').strip(),
-            audience=response_item.get('Audience', '').replace('\n', ' ').replace('\r', '').strip(),
-            office_location=response_item.get('OFFICE_LOCATION', '').replace('\n', ' ').replace('\r', '').strip(),
-            email=response_item.get('EMAIL', '').replace('\n', ' ').replace('\r', '').strip(),
-            address=response_item.get('ADDRESS', '').replace('\n', ' ').replace('\r', '').strip(),
-            province=response_item.get('Province', '').replace('\n', ' ').replace('\r', '').strip()
+            tender_number=response_item.get('REFERENCE', '').replace('\n', ' ').replace('\r', '').strip().upper(),
+            audience=response_item.get('Audience', '').replace('\n', ' ').replace('\r', '').strip().title(),
+            office_location=response_item.get('OFFICE_LOCATION', '').replace('\n', ' ').replace('\r', '').strip().title(),
+            email=response_item.get('EMAIL', '').replace('\n', ' ').replace('\r', '').strip().lower(),
+            address=response_item.get('ADDRESS', '').replace('\n', ' ').replace('\r', '').strip().title(),
+            province=response_item.get('Province', '').replace('\n', ' ').replace('\r', '').strip().title()
         )
 
     def to_dict(self):
@@ -249,7 +246,6 @@ class EskomTender(TenderBase):
         # Add the Eskom-specific fields to the dictionary.
         data.update({
             "tenderNumber": self.tender_number,
-            "reference": self.reference,
             "audience": self.audience,
             "officeLocation": self.office_location,
             "email": self.email,

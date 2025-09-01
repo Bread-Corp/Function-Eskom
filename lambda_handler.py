@@ -1,102 +1,164 @@
-import json
-import requests
+# ==================================================================================================
+#
+# File: EskomLambda/lambda_handler.py
+#
+# Description:
+# This script contains an AWS Lambda function designed to fetch tender data from the Eskom
+# Tender Bulletin API. It processes the raw data, transforms it into a structured format
+# using the EskomTender model, and then sends it to an Amazon SQS (Simple Queue Service)
+# queue for further processing by a downstream service (e.g., an AI tagging service).
+#
+# The function performs the following steps:
+# 1. Fetches tender data from the Eskom API endpoint.
+# 2. Handles potential network errors or invalid API responses.
+# 3. Iterates through each tender item in the response.
+# 4. Validates and parses each item into a structured EskomTender object.
+# 5. Skips and logs any items that fail validation.
+# 6. Converts the processed tender objects into dictionaries.
+# 7. Batches the tender data into groups of 10.
+# 8. Sends each batch to a specified SQS FIFO queue.
+# 9. Logs the outcome of the entire operation.
+#
+# ==================================================================================================
 
-from TenderBase import EskomTender
+# --- Import necessary libraries ---
+import json         # For serializing Python dictionaries to JSON strings.
+import requests     # For making HTTP requests to the Eskom API.
+import logging      # For logging information and errors.
+import boto3        # The AWS SDK for Python, used to interact with SQS.
+from models import EskomTender  # Import the data model for Eskom tenders.
 
-# --- CONFIGURATION ---
-ESKOM_API_BASE_URL = "https://tenderbulletin.eskom.co.za/webapi/api/Lookup/GetTender"
+# --- Global Constants and Configuration ---
+
+# The URL of the Eskom Tender Bulletin API.
+ESKOM_API_URL = "https://tenderbulletin.eskom.co.za/webapi/api/Lookup/GetTender?TENDER_ID="
+
+# HTTP headers to mimic a web browser, which can help avoid being blocked by the API.
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
     'Accept': 'application/json',
 }
-# Define a default range to scan. In a real scenario, you'd manage the last scanned ID in a database.
-DEFAULT_START_ID = 73470
-DEFAULT_RANGE = 10 # Number of IDs to check from the start ID
 
+# --- Logger Setup ---
+# Get the default Lambda logger instance.
+logger = logging.getLogger()
+# Set the logging level to INFO, so messages of severity INFO, WARNING, ERROR, and CRITICAL will be recorded.
+logger.setLevel(logging.INFO)
+
+# --- AWS Service Client Initialization ---
+# Create a boto3 client to interact with the SQS service.
+sqs_client = boto3.client('sqs')
+# The URL of the target SQS FIFO (First-In, First-Out) queue.
+SQS_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/211635102441/AIQueue.fifo'
+
+# ==================================================================================================
+# Lambda Function Handler
+# This is the main entry point for the AWS Lambda execution.
+# ==================================================================================================
 def lambda_handler(event, context):
     """
-    Fetches a range of Eskom tenders, deserializes them into EskomTender objects,
-    and returns them as a JSON array.
+    The main handler function for the AWS Lambda.
+
+    Args:
+        event (dict): The event data passed to the Lambda function (e.g., from a trigger like CloudWatch Events).
+        context (object): The runtime information of the Lambda function (e.g., request ID, memory limits).
+
+    Returns:
+        dict: A dictionary containing the HTTP status code and a JSON-formatted body,
+              which is standard for Lambda proxy integrations with API Gateway.
     """
     print("Lambda execution started for Eskom tenders.")
 
-    # Allow the range to be overridden by the invocation event, e.g., for scheduled tasks
-    start_id = event.get('start_id', DEFAULT_START_ID)
-    scan_range = event.get('range', DEFAULT_RANGE)
-    end_id = start_id + scan_range
+    # --- Step 1: Fetch Data from the Eskom API ---
+    try:
+        logger.info(f"Fetching data from {ESKOM_API_URL}")
+        # Make a GET request to the API with a 30-second timeout.
+        response = requests.get(ESKOM_API_URL, headers=HEADERS, timeout=30)
+        # Check if the request was successful (i.e., status code 2xx). If not, raise an HTTPError.
+        response.raise_for_status()
+        # Parse the JSON response body into a Python list of dictionaries.
+        api_data = response.json()
+        logger.info(f"Successfully fetched {len(api_data)} tender items from the API.")
+    except requests.exceptions.RequestException as e:
+        # Handle network-related errors (e.g., DNS failure, connection timeout).
+        logger.error(f"Failed to fetch data from API: {e}")
+        return {'statusCode': 502, 'body': json.dumps({'error': 'Failed to fetch data from source API'})}
+    except json.JSONDecodeError:
+        # Handle cases where the API response is not valid JSON.
+        logger.error(f"Failed to decode JSON from API response. Response text: {response.text}")
+        return {'statusCode': 502, 'body': json.dumps({'error': 'Invalid JSON response from source API'})}
 
-    print(f"Scanning for TENDER_IDs in range: {start_id} to {end_id - 1}")
+    # --- Step 2: Process and Validate Each Tender Item ---
+    processed_tenders = []  # A list to store the successfully processed EskomTender objects.
+    skipped_count = 0       # A counter for tenders that could not be processed.
 
-    processed_tenders = []
-    
-    for tender_id in range(start_id, end_id):
-        url = f"{ESKOM_API_BASE_URL}?TENDER_ID={tender_id}"
-        print(f"Fetching tender ID: {tender_id} from {url}")
-
+    # Loop through each item received from the API.
+    for item in api_data:
         try:
-            response = requests.get(url, headers=HEADERS, timeout=10) # 10-second timeout
-
-            # A 404 Not Found is expected for IDs that don't exist. We just skip them.
-            if response.status_code == 404:
-                print(f"Tender ID {tender_id} not found. Skipping.")
-                continue
-
-            # Handle other HTTP errors
-            response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
-
-            # The API returns a list with one item, or an empty list if no data
-            response_data = response.json()
-            if not isinstance(response_data, list) or not response_data:
-                print(f"Tender ID {tender_id} returned empty or invalid data. Skipping.")
-                continue
-            
-            api_item = response_data[0]
-            
-            # --- The core deserialization step ---
-            # The from_api_response method handles all mapping and validation.
-            tender_object = EskomTender.from_api_response(api_item)
+            # Use the model's factory method to parse the raw dictionary into a structured object.
+            # This step performs validation and data cleaning.
+            tender_object = EskomTender.from_api_response(item)
+            # If successful, add the object to our list.
             processed_tenders.append(tender_object)
-            print(f"Successfully processed tender ID: {tender_id}, Number: {tender_object.tender_number}")
+        except (KeyError, ValueError, TypeError) as e:
+            # Catch errors that occur during parsing, such as missing keys or invalid data types.
+            skipped_count += 1
+            # Get the tender ID for logging, defaulting to 'Unknown' if not found.
+            tender_id = item.get('TENDER_ID', 'Unknown')
+            logger.warning(f"Skipping tender {tender_id} due to a validation/parsing error: {e}")
+            continue  # Move to the next item in the loop.
 
-        except requests.exceptions.RequestException as e:
-            print(f"ERROR: Network or HTTP error for tender ID {tender_id}: {e}")
-            # Continue to the next ID, don't fail the whole batch
-            continue
-        except json.JSONDecodeError as e:
-            print(f"ERROR: Could not decode JSON for tender ID {tender_id}. Response text: {response.text}")
-            continue
-        except (KeyError, TypeError, ValueError) as e:
-            # This catches errors during deserialization (e.g., missing key, wrong data type)
-            print(f"ERROR: Data validation/mapping failed for tender ID {tender_id}: {e}")
-            continue
+    logger.info(f"Successfully processed {len(processed_tenders)} tenders.")
+    if skipped_count > 0:
+        logger.warning(f"Skipped a total of {skipped_count} tenders due to errors.")
+
+    # --- Step 3: Prepare Data for SQS ---
+    # Convert the list of EskomTender objects into a list of dictionaries.
+    processed_tender_dicts = [tender.to_dict() for tender in processed_tenders]
+
+    # --- Step 4: Batch and Send Messages to SQS ---
+    # SQS `send_message_batch` has a limit of 10 messages per call.
+    batch_size = 10
+    # Use a list comprehension to split the list of tenders into smaller "chunks" or "batches".
+    message_batches = [
+        processed_tender_dicts[i:i + batch_size]
+        for i in range(0, len(processed_tender_dicts), batch_size)
+    ]
+
+    sent_count = 0  # A counter for the total number of messages successfully sent.
+    # Iterate over each batch of tenders.
+    for batch in message_batches:
+        # Prepare the entries for the `send_message_batch` call.
+        entries = []
+        for i, tender_dict in enumerate(batch):
+            entries.append({
+                # 'Id' is a unique identifier for the message within the batch.
+                'Id': f'tender_message_{i}_{sent_count}',
+                # 'MessageBody' must be a string. We serialize the dictionary to a JSON string.
+                'MessageBody': json.dumps(tender_dict),
+                # 'MessageGroupId' is required for FIFO queues to group messages.
+                # All messages with the same group ID are processed in order.
+                'MessageGroupId': 'EskomTenderScrape'
+            })
+
+        # Send the batch to SQS inside a try-except block to handle potential sending failures.
+        try:
+            response = sqs_client.send_message_batch(
+                QueueUrl=SQS_QUEUE_URL,
+                Entries=entries
+            )
+            # Increment the counter by the number of messages that were successfully sent in this batch.
+            sent_count += len(response.get('Successful', []))
+            logger.info(f"Successfully sent a batch of {len(entries)} messages to SQS.")
         except Exception as e:
-            # Catch-all for any other unexpected errors
-            print(f"FATAL ERROR: An unexpected error occurred for tender ID {tender_id}: {e}")
-            continue
+            # Log any errors that occur during the SQS call.
+            logger.error(f"Failed to send a message batch to SQS: {e}")
 
-    print(f"Processing complete. Successfully deserialized {len(processed_tenders)} tenders.")
-    
-    # Convert all processed tender objects to dictionaries for the JSON response
-    response_body = [tender.to_dict() for tender in processed_tenders]
+    logger.info(f"Processing complete. Sent a total of {sent_count} messages to SQS.")
 
+    # --- Step 5: Return a Success Response ---
+    # This response is sent back to the invoker of the Lambda function.
     return {
         'statusCode': 200,
-        'headers': {
-            'Content-Type': 'application/json'
-        },
-        'body': json.dumps(response_body)
+        'body': json.dumps({'message': 'Tender data processed and sent to SQS queue.'})
     }
-
-# --- Example of how to test locally ---
-if __name__ == '__main__':
-    # Simulate a Lambda event. You can pass a custom start_id.
-    # The example ID 73478 from your document is used here.
-    event = {'start_id': 73478, 'range': 1} 
-    context = {}
-    result = lambda_handler(event, context)
-    
-    print("\n--- LAMBDA RESULT ---")
-    print(f"Status Code: {result['statusCode']}")
-    # Pretty-print the JSON body
-    parsed_body = json.loads(result['body'])
-    print(json.dumps(parsed_body, indent=2))

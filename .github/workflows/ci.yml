@@ -1,0 +1,46 @@
+name: CI for Python Scraper (Main)
+
+on:
+  push:
+    branches:
+      - main
+      
+env:
+  SONAR_PROJECT_KEY: Bread-Corp_Function-Eskom
+
+jobs:
+  build-lint-test-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: pip install requests pytest ruff
+          
+      - name: Lint with Ruff
+        continue-on-error: true
+        run: ruff check .
+          
+      - name: Test with Pytest
+        continue-on-error: true
+        run: pytest unit_test/
+          
+      - name: SonarCloud Scan
+        continue-on-error: true
+        uses: SonarSource/sonarcloud-github-action@v2
+        with:
+          args: >
+            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

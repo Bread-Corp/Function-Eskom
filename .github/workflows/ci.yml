@@ -4,12 +4,8 @@ on:
   push:
     branches:
       - main
-  
+  # Added so you can test this file manually
   workflow_dispatch:
-
-# Easy-to-edit variable for Sonar
-env:
-  SONAR_PROJECT_KEY: Bread-Corp_Function-Eskom 
 
 jobs:
   build-lint-test-scan:
@@ -43,10 +39,6 @@ jobs:
       - name: SonarCloud Scan
         continue-on-error: true
         uses: SonarSource/sonarcloud-github-action@v2
-        with:
-          args: >
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
-            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -4,10 +4,12 @@ on:
   push:
     branches:
       - main
+  
+  workflow_dispatch:
 
 # Easy-to-edit variable for Sonar
 env:
-  SONAR_PROJECT_KEY: Bread-Corp_Function-Eskom
+  SONAR_PROJECT_KEY: Bread-Corp_Function-Eskom 
 
 jobs:
   build-lint-test-scan:
@@ -30,13 +32,11 @@ jobs:
       - name: Lint with Ruff
         continue-on-error: true
         run: |
-          # UPDATED: Ignore E402 (module import not at top)
           ruff check . --ignore E402
           
       - name: Test with Pytest
-        continue-on-error: true
+        continue-on-error: true 
         run: |
-          # UPDATED: Add the root project directory to the PYTHONPATH
           export PYTHONPATH=$PYTHONPATH:.
           pytest unit_test/
           

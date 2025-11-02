@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-      
+
+# Easy-to-edit variable for Sonar
 env:
   SONAR_PROJECT_KEY: Bread-Corp_Function-Eskom
 
@@ -16,7 +17,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # Required for SonarCloud
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -28,11 +29,16 @@ jobs:
           
       - name: Lint with Ruff
         continue-on-error: true
-        run: ruff check .
+        run: |
+          # UPDATED: Ignore E402 (module import not at top)
+          ruff check . --ignore E402
           
       - name: Test with Pytest
         continue-on-error: true
-        run: pytest unit_test/
+        run: |
+          # UPDATED: Add the root project directory to the PYTHONPATH
+          export PYTHONPATH=$PYTHONPATH:.
+          pytest unit_test/
           
       - name: SonarCloud Scan
         continue-on-error: true

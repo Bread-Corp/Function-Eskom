@@ -1,0 +1,28 @@
+[
+    {
+        "TENDER_ID": "123",
+        "HEADER_DESC": "Upgrade of Substation",
+        "SCOPE_DETAILS": "Full electrical overhaul",
+        "PUBLISHEDDATE": "2025-10-01T09:00:00",
+        "CLOSING_DATE": "2025-10-31T16:00:00",
+        "REFERENCE": "MWP1234PS",
+        "Audience": "Suppliers",
+        "OFFICE_LOCATION": "Megawatt Park",
+        "EMAIL": "tenders@eskom.co.za",
+        "ADDRESS": "1 Maxwell Drive, Sunninghill",
+        "Province": "Gauteng"
+    },
+    {
+        "TENDER_ID": null,
+        "HEADER_DESC": "Missing ID Tender",
+        "SCOPE_DETAILS": "Should be skipped",
+        "PUBLISHEDDATE": "2025-10-01T09:00:00",
+        "CLOSING_DATE": "2025-10-31T16:00:00",
+        "REFERENCE": "MWP9999PS",
+        "Audience": "Contractors",
+        "OFFICE_LOCATION": "Cape Town",
+        "EMAIL": "missing@eskom.co.za",
+        "ADDRESS": "123 Main Road",
+        "Province": "Western Cape"
+    }
+]

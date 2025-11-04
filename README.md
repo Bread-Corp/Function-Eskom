@@ -142,16 +142,217 @@ Ready to tap into Eskom's power grid of opportunities? Let's energize your setup
 
 ## 📦 Deployment
 
-### 🚀 Power-Up Deploy
-1. **📁 Package**: Zip your code and dependencies
-2. **⬆️ Upload**: Deploy to AWS Lambda with appropriate power settings
-3. **⚙️ Configure**: Set up CloudWatch Events for scheduled scraping
-4. **🎯 Test**: Trigger manually to verify electrical connection
+This Lambda function supports multiple deployment methods to power up your infrastructure! Choose the approach that best fits your workflow. ⚡
+
+### 🚀 Method 1: Release Branch Deployment (Automated)
+
+The simplest way to deploy! Our GitHub Actions workflow automatically handles the deployment when you create a release branch.
+
+**Steps:**
+1. **Create a release branch** from main:
+   ```bash
+   git checkout main
+   git pull origin main
+   git checkout -b release/v1.0.0
+   git push origin release/v1.0.0
+   ```
+
+2. **Automatic deployment** triggers via GitHub Actions workflow
+3. **Verify deployment** in AWS Lambda console
+
+**Benefits:** 🎯
+- ✅ Zero manual configuration
+- ✅ Consistent deployment process
+- ✅ Automatic rollback on failure
+- ✅ Integrated with CI/CD pipeline
+
+### 🔧 Method 2: AWS SAM Deployment
+
+Deploy using AWS SAM with the included `template.yml` for complete infrastructure management.
+
+**Prerequisites:**
+```bash
+# Install AWS SAM CLI
+pip install aws-sam-cli
+
+# Verify installation
+sam --version
+```
+
+**Deployment Steps:**
+```bash
+# 1. Build the SAM application
+sam build --template-file template.yml
+
+# 2. Deploy with guided setup (first time)
+sam deploy --guided --template-file template.yml
+
+# 3. Subsequent deployments
+sam deploy --template-file template.yml
+```
+
+**Advanced SAM Options:**
+```bash
+# Deploy to specific environment
+sam deploy --template-file template.yml --parameter-overrides Environment=production
+
+# Deploy with custom stack name
+sam deploy --template-file template.yml --stack-name eskom-function-prod
+
+# Validate template before deployment
+sam validate --template-file template.yml
+```
+
+**Benefits:** 🏗️
+- ✅ Infrastructure as Code
+- ✅ Complete stack management
+- ✅ Environment-specific configurations
+- ✅ Local testing capabilities
+
+### 🛠️ Method 3: AWS Toolkit/CLI Deployment
+
+Direct deployment using AWS CLI and toolkit for maximum control.
+
+**Prerequisites:**
+```bash
+# Install AWS CLI
+pip install awscli
+
+# Configure AWS credentials
+aws configure
+
+# Install AWS Lambda deployment tools
+pip install boto3
+```
+
+**Deployment Steps:**
+
+1. **Prepare deployment package:**
+   ```bash
+   # Create deployment directory
+   mkdir deployment-package
+   
+   # Install dependencies
+   pip install -r requirements.txt -t deployment-package/
+   
+   # Copy source code
+   cp *.py deployment-package/
+   
+   # Create deployment zip
+   cd deployment-package
+   zip -r ../eskom-function.zip .
+   cd ..
+   ```
+
+2. **Deploy new Lambda function:**
+   ```bash
+   # Create new function
+   aws lambda create-function \
+     --function-name eskom-tender-processor \
+     --runtime python3.9 \
+     --role arn:aws:iam::YOUR-ACCOUNT:role/lambda-execution-role \
+     --handler lambda_handler.lambda_handler \
+     --zip-file fileb://eskom-function.zip \
+     --timeout 300 \
+     --memory-size 512
+   ```
+
+3. **Update existing Lambda function:**
+   ```bash
+   # Update function code
+   aws lambda update-function-code \
+     --function-name eskom-tender-processor \
+     --zip-file fileb://eskom-function.zip
+   
+   # Update function configuration
+   aws lambda update-function-configuration \
+     --function-name eskom-tender-processor \
+     --timeout 300 \
+     --memory-size 512
+   ```
+
+4. **Configure environment variables:**
+   ```bash
+   aws lambda update-function-configuration \
+     --function-name eskom-tender-processor \
+     --environment Variables='{
+       "SQS_QUEUE_URL":"https://sqs.region.amazonaws.com/account/queue-name",
+       "API_TIMEOUT":"30",
+       "BATCH_SIZE":"10"
+     }'
+   ```
+
+5. **Set up triggers (if needed):**
+   ```bash
+   # Add CloudWatch Events trigger for scheduled execution
+   aws events put-rule \
+     --name eskom-scraper-schedule \
+     --schedule-expression "rate(1 hour)"
+   
+   aws lambda add-permission \
+     --function-name eskom-tender-processor \
+     --statement-id scheduled-execution \
+     --action lambda:InvokeFunction \
+     --principal events.amazonaws.com \
+     --source-arn arn:aws:events:region:account:rule/eskom-scraper-schedule
+   
+   aws events put-targets \
+     --rule eskom-scraper-schedule \
+     --targets Id=1,Arn=arn:aws:lambda:region:account:function:eskom-tender-processor
+   ```
+
+**Benefits:** ⚙️
+- ✅ Maximum deployment control
+- ✅ Custom configuration options
+- ✅ Direct AWS service integration
+- ✅ Scriptable for automation
 
 ### 🔧 Environment Variables
-- `SQS_QUEUE_URL`: Target queue for processed power tenders
-- `API_TIMEOUT`: Request timeout for Eskom API calls
-- `BATCH_SIZE`: Number of tenders per SQS batch (default: 10)
+
+Configure these environment variables for optimal performance:
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `SQS_QUEUE_URL` | Target SQS queue for processed tenders | - | ✅ |
+| `API_TIMEOUT` | Eskom API request timeout (seconds) | 30 | ❌ |
+| `BATCH_SIZE` | Tenders per SQS batch | 10 | ❌ |
+| `LOG_LEVEL` | Logging verbosity (INFO, DEBUG, ERROR) | INFO | ❌ |
+
+### 🧪 Testing Your Deployment
+
+Verify your deployment with these validation steps:
+
+```bash
+# Test Lambda function locally (SAM)
+sam local invoke -e events/test-event.json --template-file template.yml
+
+# Test deployed function
+aws lambda invoke \
+  --function-name eskom-tender-processor \
+  --payload '{}' \
+  response.json
+
+# Check CloudWatch logs
+aws logs describe-log-groups --log-group-name-prefix /aws/lambda/eskom-tender-processor
+```
+
+### 🚨 Deployment Troubleshooting
+
+<details>
+<summary><strong>Common Deployment Issues</strong></summary>
+
+**Issue**: Permission denied during deployment
+**Solution**: Ensure your AWS credentials have Lambda and IAM permissions
+
+**Issue**: Package too large for Lambda
+**Solution**: Use Lambda layers for large dependencies or optimize package size
+
+**Issue**: Environment variables not updating
+**Solution**: Redeploy with explicit environment variable configuration
+
+</details>
+
+Choose the deployment method that best fits your development workflow. The release branch method is recommended for production environments, while AWS CLI deployment offers maximum flexibility for custom setups! ⚡
 
 ## 🧰 Troubleshooting
 
